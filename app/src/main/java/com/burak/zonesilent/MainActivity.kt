@@ -6,10 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioManager
 import android.os.Bundle
-import android.view.Gravity
 import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -32,6 +29,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.material.slider.Slider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,8 +95,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        addCrashTestButton()
         setupDatabase()
         geofenceManager = GeofenceManager(this)
 
@@ -123,38 +119,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun addCrashTestButton() {
-        val button = Button(this).apply {
-            text = "Test Crash"
-            setOnClickListener {
-                throw RuntimeException("Test Crash")
-            }
-        }
-
-        val params = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            marginEnd = 32
-            bottomMargin = 32
-        }
-
-        (binding.root as? FrameLayout)?.addView(button, params)
-            ?: addContentView(button, params)
-    }
-
     private fun setupUI() {
-        // SeekBar listener (0-500). Enforce minimum 50m in code.
-        binding.radiusSeekBar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                val adjusted = if (progress < 50) 50 else progress
-                currentRadius = adjusted.toFloat()
-                updateCircleRadius()
+        binding.radiusSlider.addOnChangeListener(Slider.OnChangeListener { _, value, _ ->
+            val adjusted = if (value < 50f) 50f else value
+            if (adjusted != value) {
+                binding.radiusSlider.value = adjusted
+                return@OnChangeListener
             }
-
-            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            currentRadius = adjusted
+            updateCircleRadius()
         })
 
         binding.saveLocationButton.setOnClickListener { saveLocation() }
@@ -540,7 +513,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         currentCircle = null
         selectedLocation = null
         binding.locationNameInput.text?.clear()
-        binding.radiusSeekBar.progress = 100
+        binding.radiusSlider.value = 100f
         currentRadius = 100f
         clearSavedSelection()
     }

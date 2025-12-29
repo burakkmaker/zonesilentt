@@ -8,6 +8,7 @@ import android.location.Location
 import android.media.AudioManager
 import android.app.NotificationManager
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.burak.zonesilent.data.AppDatabase
@@ -74,6 +75,8 @@ class ZoneMonitorService : Service() {
     private var lastNotifyText: String? = null
     private var lastNotifyAtMs: Long = 0L
 
+    private var wakeLock: PowerManager.WakeLock? = null
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val loc = result.lastLocation ?: return
@@ -86,6 +89,7 @@ class ZoneMonitorService : Service() {
         super.onCreate()
         NotificationHelper.createNotificationChannel(this)
         startForeground(NOTIFICATION_ID, buildNotification("ZoneSilent çalışıyor"))
+        acquireWakeLock()
         startLocationUpdates()
     }
 
@@ -101,6 +105,7 @@ class ZoneMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         fusedClient.removeLocationUpdates(locationCallback)
+        releaseWakeLock()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -122,14 +127,42 @@ class ZoneMonitorService : Service() {
     }
 
     private fun startLocationUpdates() {
-        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 10_000L)
-            .setMinUpdateIntervalMillis(5_000L)
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3_000L)
+            .setMinUpdateIntervalMillis(2_000L)
+            .setMinUpdateDistanceMeters(7.5f)
             .build()
 
         try {
             fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
         } catch (_: SecurityException) {
             stopSelf()
+        }
+    }
+
+    private fun acquireWakeLock() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "ZoneSilent:ZoneMonitorService"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire WakeLock: ${e.message}")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release WakeLock: ${e.message}")
+        } finally {
+            wakeLock = null
         }
     }
 

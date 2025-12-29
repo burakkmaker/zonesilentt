@@ -3,3 +3,12 @@ local.properties.template
 .idea/
 .gradle/
 build/
+
+google-services.json
+local.properties
+local.properties.template
+.gradle/
+build/
+.idea/
+*.iml
+/captures/
