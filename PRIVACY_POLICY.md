@@ -77,7 +77,7 @@ We take reasonable measures to protect information stored by the App. However, n
 
 If you have questions about this Privacy Policy, contact:
 
-- **Email:** [ADD_YOUR_SUPPORT_EMAIL]
+- **Email:** burak.soysal@ogr.ksbu.edu.tr
 
 ## Changes to This Policy
 
