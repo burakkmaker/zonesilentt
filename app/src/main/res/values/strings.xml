@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">ZoneSilent</string>
+    
+    <string name="tap_map_instruction">Tap on the map to add a silent zone</string>
+    <string name="zone_name_hint">Zone name (e.g., Library, Office)</string>
+    <string name="search_place_hint">Yer / adres ara</string>
+    <string name="radius_label">Zone Radius</string>
+    <string name="mode_silent">Sessiz</string>
+    <string name="mode_vibrate">Titreşim</string>
+    <string name="delete_selected_zone">Seçili Alanı Sil</string>
+    <string name="save_zone">Save Zone</string>
+    <string name="clear">Clear</string>
+    <string name="view_saved_zones">View Saved Zones</string>
+    <string name="my_location">My Location</string>
+    <string name="delete">Delete</string>
+    
+    <string name="saved_zones_title">Saved Silent Zones</string>
+    <string name="no_zones_saved">No zones saved yet.\nTap on the map to add a zone.</string>
+    
+    <string name="location_permission_required">Location Permission Required</string>
+    <string name="location_permission_rationale">ZoneSilent needs location permission to detect when you enter or exit designated silent zones.</string>
+    
+    <string name="background_location_required">Background Location Permission Required</string>
+    <string name="background_location_rationale">ZoneSilent requires background location permission to automatically silence your phone when you enter designated zones, even when the app is not actively open.\n\nThis is essential for the app\'s core functionality. Please select \'Allow all the time\' in the next screen.\n\nYour location data is only used locally on your device to trigger silent zones and is never shared or uploaded anywhere.</string>
+    
+    <string name="dnd_permission_required">Do Not Disturb Access Required</string>
+    <string name="dnd_permission_rationale">ZoneSilent needs permission to modify Do Not Disturb settings to automatically silence your phone in designated zones.</string>
+    
+    <string name="grant_permission">Grant Permission</string>
+    <string name="grant_access">Grant Access</string>
+    <string name="cancel">Cancel</string>
+    <string name="continue_text">Continue</string>
+    <string name="close">Close</string>
+</resources>
