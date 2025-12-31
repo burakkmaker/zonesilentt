@@ -45,6 +45,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.location.Geocoder
 import java.util.Locale
+import android.content.Intent
+import android.net.Uri
+import com.google.android.ump.ConsentInformation
+import com.google.android.ump.ConsentRequestParameters
+import com.google.android.ump.UserMessagingPlatform
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -70,6 +75,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var interstitialAd: InterstitialAd? = null
 
     private val prefs by lazy { getSharedPreferences("zonesilent_prefs", MODE_PRIVATE) }
+    private val privacyAcceptedKey = "privacy_policy_accepted"
+    private var consentInformation: ConsentInformation? = null
 
     private val interstitialAdUnitId: String
         get() {
@@ -232,7 +239,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         setupUI()
         setupBottomSheetExpandedOnStart()
         setupAds()
-        checkAndRequestPermissions()
+        checkPrivacyPolicyAcceptance()
 
         // Avoid stale geofence state after process death / app restart.
         prefs.edit()
@@ -735,6 +742,72 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             }
         } else {
             Toast.makeText(this, "Location permission required", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun checkPrivacyPolicyAcceptance() {
+        val accepted = prefs.getBoolean(privacyAcceptedKey, false)
+        if (!accepted) {
+            showPrivacyPolicyDialog()
+        } else {
+            requestConsentThenContinue()
+        }
+    }
+
+    private fun showPrivacyPolicyDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.privacy_policy_title)
+            .setMessage(R.string.privacy_policy_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.privacy_policy_accept) { _, _ ->
+                prefs.edit().putBoolean(privacyAcceptedKey, true).apply()
+                requestConsentThenContinue()
+            }
+            .setNegativeButton(R.string.privacy_policy_decline) { _, _ ->
+                Toast.makeText(
+                    this,
+                    "You must accept the Privacy Policy to use this app",
+                    Toast.LENGTH_LONG
+                ).show()
+                finish()
+            }
+            .setNeutralButton(R.string.view_full_policy) { _, _ ->
+                val intent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/burakkmaker/ZoneSilent/blob/main/PRIVACY_POLICY.md")
+                )
+                startActivity(intent)
+                showPrivacyPolicyDialog()
+            }
+            .show()
+    }
+
+    private fun requestConsentThenContinue() {
+        // GDPR/EEA users: show consent form if required (AdMob UMP).
+        // For non-EEA users, this returns quickly and continues.
+        try {
+            val params = ConsentRequestParameters.Builder().build()
+            consentInformation = UserMessagingPlatform.getConsentInformation(this)
+
+            consentInformation?.requestConsentInfoUpdate(
+                this,
+                params,
+                {
+                    UserMessagingPlatform.loadAndShowConsentFormIfRequired(
+                        this,
+                        {
+                            // Regardless of outcome, continue app flow.
+                            checkAndRequestPermissions()
+                        }
+                    )
+                },
+                {
+                    // If consent flow fails, do not block the app.
+                    checkAndRequestPermissions()
+                }
+            )
+        } catch (_: Exception) {
+            checkAndRequestPermissions()
         }
     }
 

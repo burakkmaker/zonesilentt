@@ -243,11 +243,6 @@ class ZoneMonitorService : Service() {
             if (zonesCache.isEmpty()) {
                 insideZoneIds = mutableSetOf()
                 RingerModeHelper.restorePreviousMode(this@ZoneMonitorService)
-                maybeUpdateNotification(
-                    notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager,
-                    text = "Zone yok",
-                    force = false
-                )
                 return@launch
             }
 
@@ -279,11 +274,15 @@ class ZoneMonitorService : Service() {
 
             if (!isInside) {
                 RingerModeHelper.restorePreviousMode(this@ZoneMonitorService)
-                maybeUpdateNotification(
-                    notificationManager = notificationManager,
-                    text = "Dışarıda",
-                    force = false
-                )
+                // Do not spam notification updates when outside.
+                // Only reset to a neutral text when transitioning from inside -> outside.
+                if (wasInside) {
+                    maybeUpdateNotification(
+                        notificationManager = notificationManager,
+                        text = "ZoneSilent çalışıyor",
+                        force = false
+                    )
+                }
                 return@launch
             }
 

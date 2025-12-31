@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gma-ad-services-config>
+    <privacy>
+        <include-ad-personalization-signals>true</include-ad-personalization-signals>
+    </privacy>
+</gma-ad-services-config>

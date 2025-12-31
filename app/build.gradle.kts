@@ -124,6 +124,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.1.0")
     implementation("com.google.android.gms:play-services-ads:23.2.0")
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 
     // Room (KSP)
     implementation("androidx.room:room-runtime:2.6.1")

@@ -31,4 +31,10 @@
     <string name="cancel">Cancel</string>
     <string name="continue_text">Continue</string>
     <string name="close">Close</string>
+    
+    <string name="privacy_policy_title">Privacy Policy</string>
+    <string name="privacy_policy_message">Welcome to ZoneSilent!\n\nBefore you start, please review our Privacy Policy.\n\n• We collect location data to create and monitor silent zones\n• Your zones are stored locally on your device\n• We use Google AdMob for advertisements\n• AdMob may collect advertising ID and device information\n• We do not sell your personal data\n\nBy continuing, you agree to our Privacy Policy and Terms of Service.</string>
+    <string name="privacy_policy_accept">Accept &amp; Continue</string>
+    <string name="privacy_policy_decline">Decline</string>
+    <string name="view_full_policy">View Full Policy</string>
 </resources>
