@@ -2,11 +2,14 @@ package com.burak.zonesilent
 
 import android.app.Notification
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.location.Location
 import android.media.AudioManager
 import android.app.NotificationManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -77,6 +80,28 @@ class ZoneMonitorService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
 
+    private var lastSelfRingerSetAtMs: Long = 0L
+
+    private val ringerModeChangedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != AudioManager.RINGER_MODE_CHANGED_ACTION) return
+
+            val now = System.currentTimeMillis()
+            if (now - lastSelfRingerSetAtMs < 1_000L) return
+
+            if (!RingerModeHelper.isInsideAnyZone(context)) return
+
+            val desired = RingerModeHelper.getDesiredRingerMode(context) ?: return
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val current = audioManager.ringerMode
+            if (current == desired) return
+
+            lastSelfRingerSetAtMs = now
+            val shouldSilent = desired == AudioManager.RINGER_MODE_SILENT
+            RingerModeHelper.setRingerModeForZones(context, shouldSilent)
+        }
+    }
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val loc = result.lastLocation ?: return
@@ -90,6 +115,7 @@ class ZoneMonitorService : Service() {
         NotificationHelper.createNotificationChannel(this)
         startForeground(NOTIFICATION_ID, buildNotification("ZoneSilent çalışıyor"))
         acquireWakeLock()
+        registerRingerModeListener()
         startLocationUpdates()
     }
 
@@ -104,6 +130,7 @@ class ZoneMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterRingerModeListener()
         fusedClient.removeLocationUpdates(locationCallback)
         releaseWakeLock()
     }
@@ -136,6 +163,28 @@ class ZoneMonitorService : Service() {
             fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
         } catch (_: SecurityException) {
             stopSelf()
+        }
+    }
+
+    private fun registerRingerModeListener() {
+        val filter = IntentFilter(AudioManager.RINGER_MODE_CHANGED_ACTION)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(ringerModeChangedReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(ringerModeChangedReceiver, filter)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register ringer mode receiver: ${e.message}")
+        }
+    }
+
+    private fun unregisterRingerModeListener() {
+        try {
+            unregisterReceiver(ringerModeChangedReceiver)
+        } catch (_: Exception) {
+            // ignore
         }
     }
 
@@ -239,6 +288,7 @@ class ZoneMonitorService : Service() {
             }
 
             val shouldSilent = zonesCache.any { nowInside.contains(it.id) && it.mode == "SILENT" }
+            lastSelfRingerSetAtMs = System.currentTimeMillis()
             val success = RingerModeHelper.setRingerModeForZones(this@ZoneMonitorService, shouldSilent)
 
             val title = if (shouldSilent) "Sessiz" else "Titreşim"

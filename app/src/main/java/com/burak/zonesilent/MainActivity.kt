@@ -2,10 +2,12 @@ package com.burak.zonesilent
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioManager
 import android.os.Bundle
+import android.util.Log
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -19,6 +21,13 @@ import com.burak.zonesilent.databinding.ActivityMainBinding
 import com.burak.zonesilent.databinding.DialogZoneListBinding
 import com.burak.zonesilent.utils.GeofenceManager
 import com.burak.zonesilent.utils.PermissionManager
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -29,6 +38,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.slider.Slider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,6 +47,10 @@ import android.location.Geocoder
 import java.util.Locale
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
+
+    companion object {
+        private const val TAG_ADS = "ZoneSilentAds"
+    }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var googleMap: GoogleMap
@@ -53,6 +67,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private var selectedSavedZoneId: Int? = null
 
+    private var interstitialAd: InterstitialAd? = null
+
+    private val prefs by lazy { getSharedPreferences("zonesilent_prefs", MODE_PRIVATE) }
+
+    private val interstitialAdUnitId: String
+        get() {
+            val isDebuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            val forceTestAds = resources.getBoolean(R.bool.force_test_ads)
+            return if (isDebuggable || forceTestAds) {
+                "ca-app-pub-3940256099942544/1033173712"
+            } else {
+                "ca-app-pub-8728830464842999/3222415271"
+            }
+        }
+
+    private val saveCounterKey = "save_counter"
+
     private fun syncActiveGeofencesAfterZoneChanged(zoneId: Int) {
         lifecycleScope.launch(Dispatchers.IO) {
             val prefs = getSharedPreferences("zonesilent_prefs", MODE_PRIVATE)
@@ -66,14 +97,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
             if (active.isEmpty()) {
-                val prev = prefs.getInt("prev_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
-                audioManager.ringerMode = prev
+                RingerModeHelper.restorePreviousMode(this@MainActivity)
                 return@launch
             }
 
             val ids = active.mapNotNull { it.removePrefix("GEOFENCE_").toIntOrNull() }
             if (ids.isEmpty()) {
-                audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                prefs.edit().putStringSet("active_geofences", emptySet()).apply()
+                RingerModeHelper.restorePreviousMode(this@MainActivity)
                 return@launch
             }
 
@@ -85,6 +116,100 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 AudioManager.RINGER_MODE_VIBRATE
             }
         }
+    }
+
+    private fun setupBottomSheetExpandedOnStart() {
+        binding.bottomSheet.post {
+            val behavior = BottomSheetBehavior.from(binding.bottomSheet)
+            behavior.isHideable = false
+            behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        }
+    }
+
+    private fun setupAds() {
+        Log.d(TAG_ADS, "MobileAds.initialize called")
+        MobileAds.initialize(this) {
+            Log.d(TAG_ADS, "MobileAds.initialize completed")
+            loadInterstitialAd()
+        }
+    }
+
+    private fun loadInterstitialAd() {
+        Log.d(TAG_ADS, "Loading interstitial. adUnitId=$interstitialAdUnitId")
+        val request = AdRequest.Builder().build()
+        InterstitialAd.load(
+            this,
+            interstitialAdUnitId,
+            request,
+            object : InterstitialAdLoadCallback() {
+                override fun onAdLoaded(ad: InterstitialAd) {
+                    interstitialAd = ad
+                    Log.d(TAG_ADS, "Interstitial loaded")
+                }
+
+                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                    interstitialAd = null
+                    Log.e(
+                        TAG_ADS,
+                        "Interstitial failed to load. code=${loadAdError.code} domain=${loadAdError.domain} message=${loadAdError.message} responseInfo=${loadAdError.responseInfo}"
+                    )
+                }
+            }
+        )
+    }
+
+    private fun runActionWithAdCounter(action: () -> Unit) {
+        val next = (prefs.getInt(saveCounterKey, 0) + 1)
+        prefs.edit().putInt(saveCounterKey, next).apply()
+
+        if (next >= 2) {
+            showInterstitialThen {
+                prefs.edit().putInt(saveCounterKey, 0).apply()
+                loadInterstitialAd()
+                action()
+            }
+            return
+        }
+
+        action()
+    }
+
+    private fun onSaveClicked() {
+        runActionWithAdCounter {
+            saveLocationInternal()
+        }
+    }
+
+    private fun showInterstitialThen(onComplete: () -> Unit) {
+        val ad = interstitialAd
+        if (ad == null) {
+            Log.d(TAG_ADS, "No interstitial available; continuing without ad")
+            onComplete()
+            return
+        }
+
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                interstitialAd = null
+                Log.d(TAG_ADS, "Interstitial dismissed")
+                onComplete()
+            }
+
+            override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
+                interstitialAd = null
+                Log.e(
+                    TAG_ADS,
+                    "Interstitial failed to show. code=${adError.code} domain=${adError.domain} message=${adError.message}"
+                )
+                onComplete()
+            }
+
+            override fun onAdShowedFullScreenContent() {
+                Log.d(TAG_ADS, "Interstitial showed")
+            }
+        }
+
+        ad.show(this)
     }
 
     private fun setupDatabase() {
@@ -105,11 +230,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         mapFragment.getMapAsync(this)
 
         setupUI()
+        setupBottomSheetExpandedOnStart()
+        setupAds()
         checkAndRequestPermissions()
 
         // Avoid stale geofence state after process death / app restart.
-        getSharedPreferences("zonesilent_prefs", MODE_PRIVATE)
-            .edit()
+        prefs.edit()
             .putStringSet("active_geofences", emptySet())
             .apply()
 
@@ -130,7 +256,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             updateCircleRadius()
         })
 
-        binding.saveLocationButton.setOnClickListener { saveLocation() }
+        binding.saveLocationButton.setOnClickListener { onSaveClicked() }
 
         binding.deleteSelectedButton.setOnClickListener {
             deleteSelectedZone()
@@ -298,27 +424,29 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             .setTitle("Delete Zone")
             .setMessage("Seçili alan silinsin mi?")
             .setPositiveButton("Delete") { _, _ ->
-                lifecycleScope.launch {
-                    geofenceManager.removeGeofence(
-                        id,
-                        onSuccess = {
-                            lifecycleScope.launch {
-                                database.zoneLocationDao().deleteById(id)
-                                runOnUiThread {
-                                    Toast.makeText(this@MainActivity, "Zone deleted", Toast.LENGTH_SHORT).show()
-                                    clearSavedSelection()
-                                }
-                                syncActiveGeofencesAfterZoneChanged(id)
+                runActionWithAdCounter {
+                    lifecycleScope.launch {
+                        geofenceManager.removeGeofence(
+                            id,
+                            onSuccess = {
+                                lifecycleScope.launch {
+                                    database.zoneLocationDao().deleteById(id)
+                                    runOnUiThread {
+                                        Toast.makeText(this@MainActivity, "Zone deleted", Toast.LENGTH_SHORT).show()
+                                        clearSavedSelection()
+                                    }
+                                    syncActiveGeofencesAfterZoneChanged(id)
 
-                                ZoneMonitorService.refresh(this@MainActivity)
+                                    ZoneMonitorService.refresh(this@MainActivity)
+                                }
+                            },
+                            onFailure = { error ->
+                                runOnUiThread {
+                                    Toast.makeText(this@MainActivity, "Failed to remove geofence: $error", Toast.LENGTH_LONG).show()
+                                }
                             }
-                        },
-                        onFailure = { error ->
-                            runOnUiThread {
-                                Toast.makeText(this@MainActivity, "Failed to remove geofence: $error", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -442,7 +570,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun saveLocation() {
+    private fun saveLocationInternal() {
         val locationName = binding.locationNameInput.text?.toString()?.trim()
         val location = selectedLocation
 
@@ -550,33 +678,35 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             .setTitle("Delete Zone")
             .setMessage("Are you sure you want to delete ${location.name}?")
             .setPositiveButton("Delete") { _, _ ->
-                lifecycleScope.launch {
-                    geofenceManager.removeGeofence(
-                        location.id,
-                        onSuccess = {
-                            lifecycleScope.launch {
-                                database.zoneLocationDao().delete(location)
+                runActionWithAdCounter {
+                    lifecycleScope.launch {
+                        geofenceManager.removeGeofence(
+                            location.id,
+                            onSuccess = {
+                                lifecycleScope.launch {
+                                    database.zoneLocationDao().delete(location)
+                                    runOnUiThread {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Zone deleted",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+
+                                    ZoneMonitorService.refresh(this@MainActivity)
+                                }
+                            },
+                            onFailure = { error ->
                                 runOnUiThread {
                                     Toast.makeText(
                                         this@MainActivity,
-                                        "Zone deleted",
+                                        "Failed to remove geofence: $error",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
-
-                                ZoneMonitorService.refresh(this@MainActivity)
                             }
-                        },
-                        onFailure = { error ->
-                            runOnUiThread {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    "Failed to remove geofence: $error",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
             .setNegativeButton("Cancel", null)

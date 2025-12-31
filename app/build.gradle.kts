@@ -7,26 +7,83 @@ plugins {
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin") version "2.0.1"
 }
 
+import java.util.Properties
+
 android {
     namespace = "com.burak.zonesilent"
-    compileSdk = 34
+    compileSdk = 35
+
+    val localProperties = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) {
+            f.inputStream().use { load(it) }
+        }
+    }
+
+    fun prop(name: String): String? {
+        return project.findProperty(name)?.toString() ?: localProperties.getProperty(name)
+    }
+
+    val signingKeyPath = prop("KEY_PATH")
+    val signingKeyPassword = prop("KEY_PASSWORD")
+    val signingKeyAlias = prop("KEY_ALIAS")
+
+    fun validateAdmobAppId(raw: String?): String {
+        val trimmed = (raw ?: "").trim()
+        val pattern = Regex("^ca-app-pub-\\d{16}~\\d{10}$")
+        return if (!pattern.matches(trimmed)) {
+            "ca-app-pub-3940256099942544~3347511713"
+        } else {
+            trimmed
+        }
+    }
+
+    fun propBool(name: String, default: Boolean = false): Boolean {
+        val raw = prop(name) ?: return default
+        return raw.trim().equals("true", ignoreCase = true)
+    }
 
     defaultConfig {
         applicationId = "com.burak.zonesilent"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 35
+        versionCode = 12
+        versionName = "1.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders += mapOf(
-            "MAPS_API_KEY" to (project.findProperty("MAPS_API_KEY") ?: "")
+            "MAPS_API_KEY" to (prop("MAPS_API_KEY") ?: ""),
+            "ADMOB_APP_ID" to validateAdmobAppId(
+                prop("ADMOB_APP_ID_RELEASE") ?: prop("ADMOB_APP_ID")
+            )
+        )
+
+        resValue(
+            "bool",
+            "force_test_ads",
+            if (propBool("FORCE_TEST_ADS", default = false)) "true" else "false"
         )
     }
 
+    signingConfigs {
+        if (signingKeyPath != null && signingKeyPassword != null && signingKeyAlias != null) {
+            create("release") {
+                storeFile = file(signingKeyPath)
+                storePassword = signingKeyPassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+        }
         release {
             isMinifyEnabled = false
+            if (signingKeyPath != null && signingKeyPassword != null && signingKeyAlias != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -66,6 +123,7 @@ dependencies {
     // Google Play Services
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation("com.google.android.gms:play-services-ads:23.2.0")
 
     // Room (KSP)
     implementation("androidx.room:room-runtime:2.6.1")

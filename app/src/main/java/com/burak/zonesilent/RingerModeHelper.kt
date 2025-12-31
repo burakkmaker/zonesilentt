@@ -10,6 +10,7 @@ object RingerModeHelper {
     private const val PREFS_NAME = "zonesilent_prefs"
     private const val KEY_PREV_RINGER_MODE = "prev_ringer_mode"
     private const val KEY_INSIDE_ANY_ZONE = "inside_any_zone"
+    private const val KEY_DESIRED_RINGER_MODE = "desired_ringer_mode"
 
     fun capturePreviousModeIfNeeded(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -46,6 +47,7 @@ object RingerModeHelper {
             Log.w(TAG, "DND policy access not granted; falling back to VIBRATE instead of SILENT")
             try {
                 audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                setDesiredRingerMode(context, AudioManager.RINGER_MODE_VIBRATE)
                 Log.d(TAG, "Ringer mode set to VIBRATE (fallback from SILENT)")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set VIBRATE mode: ${e.message}")
@@ -55,6 +57,7 @@ object RingerModeHelper {
 
         try {
             audioManager.ringerMode = desiredMode
+            setDesiredRingerMode(context, desiredMode)
             Log.d(TAG, "Ringer mode set to ${ringerModeToString(desiredMode)}")
             return true
         } catch (e: Exception) {
@@ -67,10 +70,16 @@ object RingerModeHelper {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
+        val wasInside = prefs.getBoolean(KEY_INSIDE_ANY_ZONE, false)
+        if (!wasInside) {
+            return
+        }
+        
         val prevMode = prefs.getInt(KEY_PREV_RINGER_MODE, AudioManager.RINGER_MODE_NORMAL)
         
         prefs.edit()
             .putBoolean(KEY_INSIDE_ANY_ZONE, false)
+            .remove(KEY_DESIRED_RINGER_MODE)
             .apply()
         
         try {
@@ -84,6 +93,22 @@ object RingerModeHelper {
     fun isInsideAnyZone(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getBoolean(KEY_INSIDE_ANY_ZONE, false)
+    }
+
+    fun setDesiredRingerMode(context: Context, mode: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(KEY_DESIRED_RINGER_MODE, mode).apply()
+    }
+
+    fun clearDesiredRingerMode(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_DESIRED_RINGER_MODE).apply()
+    }
+
+    fun getDesiredRingerMode(context: Context): Int? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.contains(KEY_DESIRED_RINGER_MODE)) return null
+        return prefs.getInt(KEY_DESIRED_RINGER_MODE, AudioManager.RINGER_MODE_NORMAL)
     }
 
     private fun ringerModeToString(mode: Int): String {
